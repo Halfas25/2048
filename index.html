@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Evolution of Power - 2048</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #1a1a1a; touch-action: none; overflow: hidden; }
+        .tile-enter { animation: appear 0.2s ease-in-out; }
+        .tile-merge { animation: pop 0.2s ease-in-out; }
+        @keyframes appear {
+            0% { opacity: 0; transform: scale(0); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="text-white flex items-center justify-center min-h-screen font-sans">
+    <div id="root" class="w-full h-full flex items-center justify-center"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        const TILE_DATA = {
+            2: { name: 'Stone Age', bg: 'bg-[#5c4033]', text: 'text-gray-300' },
+            4: { name: 'Bronze Age', bg: 'bg-[#8b5a2b]', text: 'text-gray-200' },
+            8: { name: 'Iron Age', bg: 'bg-[#a0522d]', text: 'text-white' },
+            16: { name: 'Middle Ages', bg: 'bg-[#cd853f]', text: 'text-white' },
+            32: { name: 'Renaissance', bg: 'bg-[#d2691e]', text: 'text-white' },
+            64: { name: 'Industrial', bg: 'bg-[#b8860b]', text: 'text-white' },
+            128: { name: 'Modern', bg: 'bg-[#daa520]', text: 'text-white' },
+            256: { name: 'Digital', bg: 'bg-[#00ced1]', text: 'text-white' },
+            512: { name: 'AI Era', bg: 'bg-[#9370db]', text: 'text-white' },
+            1024: { name: 'Interstellar', bg: 'bg-[#8a2be2]', text: 'text-white' },
+            2048: { name: 'Singularity', bg: 'bg-[#4b0082]', text: 'text-yellow-400 font-bold shadow-lg shadow-purple-500/50' }
+        };
+
+        const getEmptyBoard = () => Array(4).fill(null).map(() => Array(4).fill(0));
+
+        const addRandomTile = (board) => {
+            let emptyCells = [];
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (board[r][c] === 0) emptyCells.push({ r, c });
+                }
+            }
+            if (emptyCells.length > 0) {
+                const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                board[r][c] = Math.random() < 0.9 ? 2 : 4;
+            }
+            return board;
+        };
+
+        const App = () => {
+            const [board, setBoard] = useState(() => addRandomTile(addRandomTile(getEmptyBoard())));
+            const [score, setScore] = useState(0);
+            const [gameOver, setGameOver] = useState(false);
+            
+            // Touch state for mobile swipe
+            const touchStart = useRef({ x: 0, y: 0 });
+
+            const handleRestart = () => {
+                setBoard(addRandomTile(addRandomTile(getEmptyBoard())));
+                setScore(0);
+                setGameOver(false);
+            };
+
+            const slide = (row) => {
+                let arr = row.filter(val => val);
+                let missing = 4 - arr.length;
+                let zeros = Array(missing).fill(0);
+                return arr.concat(zeros);
+            };
+
+            const combine = (row, currentScore) => {
+                let newScore = currentScore;
+                for (let i = 0; i < 3; i++) {
+                    if (row[i] !== 0 && row[i] === row[i + 1]) {
+                        row[i] *= 2;
+                        row[i + 1] = 0;
+                        newScore += row[i];
+                    }
+                }
+                return { row, newScore };
+            };
+
+            const operate = (row, currentScore) => {
+                row = slide(row);
+                const combined = combine(row, currentScore);
+                row = slide(combined.row);
+                return { row, newScore: combined.newScore };
+            };
+
+            const move = useCallback((direction) => {
+                if (gameOver) return;
+
+                let newBoard = JSON.parse(JSON.stringify(board));
+                let oldBoard = JSON.stringify(board);
+                let newScore = score;
+
+                const rotateRight = (matrix) => {
+                    let result = getEmptyBoard();
+                    for (let r = 0; r < 4; r++) {
+                        for (let c = 0; c < 4; c++) {
+                            result[c][3 - r] = matrix[r][c];
+                        }
+                    }
+                    return result;
+                };
+
+                const rotateLeft = (matrix) => {
+                    let result = getEmptyBoard();
+                    for (let r = 0; r < 4; r++) {
+                        for (let c = 0; c < 4; c++) {
+                            result[3 - c][r] = matrix[r][c];
+                        }
+                    }
+                    return result;
+                };
+
+                if (direction === 'LEFT') {
+                    for (let i = 0; i < 4; i++) {
+                        let res = operate(newBoard[i], newScore);
+                        newBoard[i] = res.row;
+                        newScore = res.newScore;
+                    }
+                } else if (direction === 'RIGHT') {
+                    for (let i = 0; i < 4; i++) {
+                        let reversed = [...newBoard[i]].reverse();
+                        let res = operate(reversed, newScore);
+                        newBoard[i] = res.row.reverse();
+                        newScore = res.newScore;
+                    }
+                } else if (direction === 'UP') {
+                    newBoard = rotateLeft(newBoard);
+                    for (let i = 0; i < 4; i++) {
+                        let res = operate(newBoard[i], newScore);
+                        newBoard[i] = res.row;
+                        newScore = res.newScore;
+                    }
+                    newBoard = rotateRight(newBoard);
+                } else if (direction === 'DOWN') {
+                    newBoard = rotateRight(newBoard);
+                    for (let i = 0; i < 4; i++) {
+                        let res = operate(newBoard[i], newScore);
+                        newBoard[i] = res.row;
+                        newScore = res.newScore;
+                    }
+                    newBoard = rotateLeft(newBoard);
+                }
+
+                if (oldBoard !== JSON.stringify(newBoard)) {
+                    newBoard = addRandomTile(newBoard);
+                    setBoard(newBoard);
+                    setScore(newScore);
+                    checkGameOver(newBoard);
+                }
+            }, [board, score, gameOver]);
+
+            const checkGameOver = (currentBoard) => {
+                for (let r = 0; r < 4; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        if (currentBoard[r][c] === 0) return;
+                        if (c !== 3 && currentBoard[r][c] === currentBoard[r][c + 1]) return;
+                        if (r !== 3 && currentBoard[r][c] === currentBoard[r + 1][c]) return;
+                    }
+                }
+                setGameOver(true);
+            };
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                        e.preventDefault();
+                    }
+                    switch (e.key) {
+                        case 'ArrowUp': move('UP'); break;
+                        case 'ArrowDown': move('DOWN'); break;
+                        case 'ArrowLeft': move('LEFT'); break;
+                        case 'ArrowRight': move('RIGHT'); break;
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [move]);
+
+            // Swipe logic
+            const handleTouchStart = (e) => {
+                touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            };
+
+            const handleTouchEnd = (e) => {
+                if (!touchStart.current) return;
+                const deltaX = e.changedTouches[0].clientX - touchStart.current.x;
+                const deltaY = e.changedTouches[0].clientY - touchStart.current.y;
+                const absX = Math.abs(deltaX);
+                const absY = Math.abs(deltaY);
+
+                if (Math.max(absX, absY) > 30) { 
+                    if (absX > absY) {
+                        deltaX > 0 ? move('RIGHT') : move('LEFT');
+                    } else {
+                        deltaY > 0 ? move('DOWN') : move('UP');
+                    }
+                }
+            };
+
+            return (
+                <div 
+                    className="w-full max-w-md p-4 flex flex-col items-center"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    <div className="w-full flex justify-between items-center mb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-wider text-purple-400">EVOLUTION</h1>
+                            <p className="text-xs text-gray-400 uppercase tracking-widest mt-1">of Power</p>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-lg min-w-[100px] text-center shadow-lg border border-gray-700">
+                            <p className="text-xs text-gray-400 uppercase">Score</p>
+                            <p className="text-xl font-bold">{score}</p>
+                        </div>
+                    </div>
+
+                    <div className="w-full bg-gray-800 p-3 rounded-xl relative shadow-2xl border border-gray-700">
+                        {gameOver && (
+                            <div className="absolute inset-0 bg-black/80 z-10 flex flex-col items-center justify-center rounded-xl tile-enter">
+                                <h2 className="text-3xl font-bold text-red-500 mb-4 drop-shadow-lg">Collapse of Civilization</h2>
+                                <button 
+                                    onClick={handleRestart}
+                                    className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-purple-500/30"
+                                >
+                                    Try Again
+                                </button>
+                            </div>
+                        )}
+                        
+                        <div className="grid grid-cols-4 gap-2 md:gap-3 aspect-square">
+                            {board.map((row, rIdx) => 
+                                row.map((cell, cIdx) => {
+                                    const tileInfo = TILE_DATA[cell];
+                                    return (
+                                        <div key={`${rIdx}-${cIdx}`} className="bg-gray-900 rounded-lg flex items-center justify-center relative overflow-hidden">
+                                            {cell !== 0 && (
+                                                <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-lg tile-enter tile-merge transition-all duration-150 ease-in-out ${tileInfo.bg}`}>
+                                                    <span className={`text-[10px] md:text-xs font-bold uppercase tracking-wider text-center px-1 leading-tight ${tileInfo.text}`}>
+                                                        {tileInfo.name}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={handleRestart}
+                        className="mt-8 px-8 py-3 w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg text-sm font-bold uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                        Restart Civilization
+                    </button>
+                    
+                    <p className="mt-6 text-xs text-gray-500 text-center">
+                        Use <strong className="text-gray-300">Arrow Keys</strong> or <strong className="text-gray-300">Swipe</strong> to evolve through the eras.
+                    </p>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
