@@ -1,24 +1,24 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evolution of Power - Neon Edition</title>
+    <title>Эволюция - 2048</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        /* Глубокий фоновый градиент для всей страницы */
         body { 
             background: radial-gradient(ellipse at bottom, #1B2735 0%, #090A0F 100%);
             touch-action: none; 
             overflow: hidden; 
             font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* Эффект "Стекла" для контейнеров */
         .glass-panel {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
@@ -27,37 +27,53 @@
             box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
         }
 
-        /* Базовый стиль плитки - "голограмма" */
         .tile-base {
-            background: rgba(30, 41, 59, 0.7); /* Полупрозрачный темный фон */
-            border: 1px solid rgba(255, 255, 255, 0.15); /* Тонкая светящаяся рамка */
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5); /* Внутренняя тень для объема */
-            transition: all 0.15s ease-in-out;
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            transition: transform 0.15s ease-in-out, background 0.15s;
         }
 
-        /* Анимация появления новой плитки: Вылет + Фейд + Масштаб */
-        .tile-new-appear { 
-            animation: appear-smooth 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; 
-        }
+        .tile-new-appear { animation: appear-smooth 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         @keyframes appear-smooth {
             0% { opacity: 0; transform: scale(0.3) translateY(20px); filter: blur(5px); }
             100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
         }
 
-        /* Анимация слияния: Мощный "Поп" + Вспышка яркости */
-        .tile-merged-pop { 
-            animation: pop-intense 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; 
-            z-index: 20;
-        }
+        .tile-merged-pop { animation: pop-intense 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; z-index: 20; }
         @keyframes pop-intense {
-            0% { transform: scale(0.8); filter: brightness(1); }
-            40% { transform: scale(1.15); filter: brightness(1.8); } /* Пик яркости и размера */
-            100% { transform: scale(1); filter: brightness(1); }
+            0% { transform: scale(0.8); }
+            40% { transform: scale(1.15); }
+            100% { transform: scale(1); }
         }
 
-        /* Утилита для скрытия скроллбара */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes icon-pulse {
+            0% { transform: scale(1); filter: brightness(1); }
+            40% { transform: scale(1.4); filter: brightness(2) drop-shadow(0 0 15px rgba(255,255,255,0.8)); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+        .animate-icon-pulse { animation: icon-pulse 0.3s ease-out forwards; }
+
+        @keyframes particle-burst {
+            0% { transform: translate(0, 0) scale(1.5); opacity: 1; filter: blur(0px); }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; filter: blur(2px); }
+        }
+        .particle {
+            position: absolute;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 0 8px white;
+            animation: particle-burst 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        @keyframes score-float {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-30px) scale(1.2); }
+        }
+        .score-anim { animation: score-float 0.8s ease-out forwards; position: absolute; font-weight: 900; color: #4ade80; text-shadow: 0 0 10px #4ade80; pointer-events: none; z-index: 50; }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
@@ -67,186 +83,215 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
 
-        // Данные эпох с настройками свечения (Neon Glow)
         const TILE_DATA = {
-            2: { name: 'Stone Age', color: 'text-stone-300', glow: '0 0 10px rgba(120, 113, 108, 0.5), inset 0 0 5px rgba(120, 113, 108, 0.2)' },
-            4: { name: 'Bronze Age', color: 'text-orange-300', glow: '0 0 12px rgba(251, 146, 60, 0.6), inset 0 0 5px rgba(251, 146, 60, 0.3)' },
-            8: { name: 'Iron Age', color: 'text-red-300', glow: '0 0 15px rgba(248, 113, 113, 0.7), inset 0 0 8px rgba(248, 113, 113, 0.3)' },
-            16: { name: 'Middle Ages', color: 'text-amber-300', glow: '0 0 15px rgba(251, 191, 36, 0.7), inset 0 0 8px rgba(251, 191, 36, 0.3)' },
-            32: { name: 'Renaissance', color: 'text-yellow-300', glow: '0 0 18px rgba(250, 204, 21, 0.8), 0 0 30px rgba(250, 204, 21, 0.4)' },
-            64: { name: 'Industrial', color: 'text-lime-400', glow: '0 0 20px rgba(163, 230, 53, 0.8), 0 0 35px rgba(163, 230, 53, 0.5)' },
-            128: { name: 'Modern', color: 'text-emerald-400', glow: '0 0 22px rgba(52, 211, 153, 0.9), 0 0 40px rgba(52, 211, 153, 0.5)' },
-            256: { name: 'Digital', color: 'text-cyan-400', glow: '0 0 25px rgba(34, 211, 238, 0.9), 0 0 45px rgba(34, 211, 238, 0.6), inset 0 0 10px rgba(255,255,255,0.3)' },
-            512: { name: 'AI Era', color: 'text-blue-400', glow: '0 0 28px rgba(96, 165, 250, 1), 0 0 50px rgba(37, 99, 235, 0.7), inset 0 0 15px rgba(255,255,255,0.4)' },
-            1024: { name: 'Interstellar', color: 'text-violet-400', glow: '0 0 30px rgba(167, 139, 250, 1), 0 0 60px rgba(124, 58, 237, 0.8), inset 0 0 20px rgba(255,255,255,0.5)' },
-            2048: { name: 'Singularity', color: 'text-fuchsia-400', glow: '0 0 35px rgba(232, 121, 249, 1), 0 0 70px rgba(192, 38, 211, 0.9), inset 0 0 25px rgba(255,215,0, 0.6)' }
+            2: { icon: 'anvil', level: 1, color: 'text-stone-300', glow: '0 0 10px rgba(120, 113, 108, 0.5), inset 0 0 5px rgba(120, 113, 108, 0.2)' },
+            4: { icon: 'tent', level: 2, color: 'text-orange-300', glow: '0 0 12px rgba(251, 146, 60, 0.6), inset 0 0 5px rgba(251, 146, 60, 0.3)' },
+            8: { icon: 'sword', level: 3, color: 'text-red-300', glow: '0 0 15px rgba(248, 113, 113, 0.7), inset 0 0 8px rgba(248, 113, 113, 0.3)' },
+            16: { icon: 'castle', level: 4, color: 'text-amber-300', glow: '0 0 15px rgba(251, 191, 36, 0.7), inset 0 0 8px rgba(251, 191, 36, 0.3)' },
+            32: { icon: 'palette', level: 5, color: 'text-yellow-300', glow: '0 0 18px rgba(250, 204, 21, 0.8), 0 0 30px rgba(250, 204, 21, 0.4)' },
+            64: { icon: 'factory', level: 6, color: 'text-lime-400', glow: '0 0 20px rgba(163, 230, 53, 0.8), 0 0 35px rgba(163, 230, 53, 0.5)' },
+            128: { icon: 'satellite', level: 7, color: 'text-emerald-400', glow: '0 0 22px rgba(52, 211, 153, 0.9), 0 0 40px rgba(52, 211, 153, 0.5)' },
+            256: { icon: 'cpu', level: 8, color: 'text-cyan-400', glow: '0 0 25px rgba(34, 211, 238, 0.9), 0 0 45px rgba(34, 211, 238, 0.6), inset 0 0 10px rgba(255,255,255,0.3)' },
+            512: { icon: 'bot', level: 9, color: 'text-blue-400', glow: '0 0 28px rgba(96, 165, 250, 1), 0 0 50px rgba(37, 99, 235, 0.7), inset 0 0 15px rgba(255,255,255,0.4)' },
+            1024: { icon: 'orbit', level: 10, color: 'text-violet-400', glow: '0 0 30px rgba(167, 139, 250, 1), 0 0 60px rgba(124, 58, 237, 0.8), inset 0 0 20px rgba(255,255,255,0.5)' },
+            2048: { icon: 'zap', level: 11, color: 'text-fuchsia-400', glow: '0 0 35px rgba(232, 121, 249, 1), 0 0 70px rgba(192, 38, 211, 0.9), inset 0 0 25px rgba(255,215,0, 0.6)' }
         };
 
         const getEmptyBoard = () => Array(4).fill(null).map(() => Array(4).fill(0));
 
-        // Вспомогательная функция для добавления новой плитки
-        // Возвращает { newBoard, addedPosition: {r, c} | null }
-        const addRandomTile = (board) => {
-            let emptyCells = [];
-            for (let r = 0; r < 4; r++) {
-                for (let c = 0; c < 4; c++) {
-                    if (board[r][c] === 0) emptyCells.push({ r, c });
-                }
-            }
-            if (emptyCells.length > 0) {
-                const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-                board[r][c] = Math.random() < 0.9 ? 2 : 4;
-                return { newBoard: board, addedPos: { r, c } };
-            }
-            return { newBoard: board, addedPos: null };
-        };
-
         const App = () => {
-            // Инициализация: создаем доску и добавляем 2 стартовые плитки
+            // Аудио движок (Web Audio API)
+            const audioCtx = useRef(null);
+            
+            const initAudio = () => {
+                if (!audioCtx.current) {
+                    audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            };
+
+            const playSound = (type, level = 1) => {
+                if (!audioCtx.current) return;
+                const ctx = audioCtx.current;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'move') {
+                    // Глухой звук свайпа
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(120, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+                    osc.start(); osc.stop(ctx.currentTime + 0.1);
+                } else if (type === 'merge') {
+                    // Яркий звон слияния, высота зависит от эпохи
+                    osc.type = 'triangle';
+                    // Базовая частота 300Hz, каждая эпоха повышает тон
+                    const freq = 300 * Math.pow(1.15, level); 
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+                    osc.start(); osc.stop(ctx.currentTime + 0.2);
+                }
+            };
+
+            // Вибрация
+            const vibrate = (pattern) => {
+                if (navigator.vibrate) navigator.vibrate(pattern);
+            };
+
             const initGame = () => {
-                let { newBoard: b1 } = addRandomTile(getEmptyBoard());
-                let { newBoard: b2 } = addRandomTile(b1);
-                return b2;
-            }
+                let empty = getEmptyBoard();
+                empty[Math.floor(Math.random()*4)][Math.floor(Math.random()*4)] = 2;
+                let r, c;
+                do {
+                    r = Math.floor(Math.random()*4);
+                    c = Math.floor(Math.random()*4);
+                } while(empty[r][c] !== 0);
+                empty[r][c] = Math.random() < 0.9 ? 2 : 4;
+                return empty;
+            };
 
             const [board, setBoard] = useState(initGame);
             const [score, setScore] = useState(0);
+            const [highScore, setHighScore] = useState(() => Number(localStorage.getItem('evoHighScore')) || 0);
             const [gameOver, setGameOver] = useState(false);
-            
-            // Состояния для отслеживания анимаций
-            const [mergedPos, setMergedPos] = useState(null); // {r, c} последней слитой плитки
-            const [newTilePos, setNewTilePos] = useState(null); // {r, c} последней добавленной плитки
+            const [mergedTiles, setMergedTiles] = useState([]);
+            const [newTilePos, setNewTilePos] = useState(null);
+            const [scoreAdds, setScoreAdds] = useState([]); // Для всплывающих очков
 
             const touchStart = useRef({ x: 0, y: 0 });
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            // Обновляем рекорд
+            useEffect(() => {
+                if (score > highScore) {
+                    setHighScore(score);
+                    localStorage.setItem('evoHighScore', score);
+                }
+            }, [score, highScore]);
 
             const handleRestart = () => {
                 setBoard(initGame());
                 setScore(0);
                 setGameOver(false);
-                setMergedPos(null);
+                setMergedTiles([]);
                 setNewTilePos(null);
+                setScoreAdds([]);
             };
-
-            // --- Логика 2048 ---
-            const slide = (row) => {
-                let arr = row.filter(val => val);
-                let missing = 4 - arr.length;
-                let zeros = Array(missing).fill(0);
-                return arr.concat(zeros);
-            };
-
-            const combine = (row, currentScore) => {
-                let newScore = currentScore;
-                let hasMerged = false;
-                let mergeIndex = -1;
-
-                for (let i = 0; i < 3; i++) {
-                    if (row[i] !== 0 && row[i] === row[i + 1]) {
-                        row[i] *= 2;
-                        row[i + 1] = 0;
-                        newScore += row[i];
-                        hasMerged = true;
-                        // Запоминаем индекс слияния относительно строки (для анимации)
-                        mergeIndex = i; 
-                        // В этой простой реализации мы можем отследить только одно слияние за ряд точно
-                        break; 
-                    }
-                }
-                return { row, newScore, hasMerged, mergeIndex };
-            };
-
-            const operate = (row, currentScore) => {
-                row = slide(row);
-                const combined = combine(row, currentScore);
-                row = slide(combined.row);
-                return combined;
-            };
-
-            // Матричные повороты для обработки всех направлений одной функцией
-            const rotateRight = (matrix) => matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
-            const rotateLeft = (matrix) => matrix[0].map((val, index) => matrix.map(row => row[row.length-1-index]));
 
             const move = useCallback((direction) => {
                 if (gameOver) return;
+                initAudio(); // Инициализация аудио при первом ходе
 
                 let newBoard = JSON.parse(JSON.stringify(board));
                 let oldBoardStr = JSON.stringify(board);
                 let newScore = score;
-                let currentMergedPos = null;
+                let currentMerges = [];
+                let pointsGained = 0;
+                let highestMergeLevel = 0;
 
-                // Helper to track merged position in 2D space
-                const trackMerge = (r, c_idx, dir) => {
-                     // Упрощенное отслеживание: запоминаем только ОДНУ позицию слияния за ход для визуального "попа"
-                     // Для идеальной анимации нужна система с уникальными ID для каждой плитки.
-                     if(dir === 'LEFT') currentMergedPos = {r, c: c_idx};
-                     if(dir === 'RIGHT') currentMergedPos = {r, c: 3-c_idx};
-                     if(dir === 'UP') currentMergedPos = {r: c_idx, c: r};
-                     if(dir === 'DOWN') currentMergedPos = {r: 3-c_idx, c: r};
-                }
+                const slide = (row) => row.filter(val => val).concat(Array(4 - row.filter(val => val).length).fill(0));
+                
+                const combine = (row, r_idx, isVertical, isReverse) => {
+                    for (let i = 0; i < 3; i++) {
+                        if (row[i] !== 0 && row[i] === row[i + 1]) {
+                            row[i] *= 2;
+                            pointsGained += row[i];
+                            newScore += row[i];
+                            
+                            const level = TILE_DATA[row[i]]?.level || 1;
+                            if (level > highestMergeLevel) highestMergeLevel = level;
 
-                if (direction === 'LEFT') {
-                    for (let i = 0; i < 4; i++) {
-                        let res = operate(newBoard[i], newScore);
-                        newBoard[i] = res.row;
-                        newScore = res.newScore;
-                        if(res.hasMerged) trackMerge(i, res.mergeIndex, 'LEFT');
+                            // Вычисляем абсолютные координаты для анимаций
+                            let absR = isVertical ? i : r_idx;
+                            let absC = isVertical ? r_idx : i;
+                            if (isReverse && !isVertical) absC = 3 - i;
+                            if (isReverse && isVertical) absR = 3 - i;
+                            
+                            currentMerges.push({ r: absR, c: absC, val: row[i] });
+                            
+                            row[i + 1] = 0;
+                        }
                     }
-                } else if (direction === 'RIGHT') {
-                    for (let i = 0; i < 4; i++) {
-                        let reversed = [...newBoard[i]].reverse();
-                        let res = operate(reversed, newScore);
-                        newBoard[i] = res.row.reverse();
-                        newScore = res.newScore;
-                        if(res.hasMerged) trackMerge(i, res.mergeIndex, 'RIGHT');
+                    return row;
+                };
+
+                // Логика сдвига
+                for (let i = 0; i < 4; i++) {
+                    if (direction === 'LEFT') {
+                        newBoard[i] = slide(newBoard[i]);
+                        newBoard[i] = combine(newBoard[i], i, false, false);
+                        newBoard[i] = slide(newBoard[i]);
+                    } else if (direction === 'RIGHT') {
+                        let row = [...newBoard[i]].reverse();
+                        row = slide(row);
+                        row = combine(row, i, false, true);
+                        row = slide(row);
+                        newBoard[i] = row.reverse();
+                    } else if (direction === 'UP') {
+                        let col = [newBoard[0][i], newBoard[1][i], newBoard[2][i], newBoard[3][i]];
+                        col = slide(col);
+                        col = combine(col, i, true, false);
+                        col = slide(col);
+                        for(let j=0; j<4; j++) newBoard[j][i] = col[j];
+                    } else if (direction === 'DOWN') {
+                        let col = [newBoard[3][i], newBoard[2][i], newBoard[1][i], newBoard[0][i]];
+                        col = slide(col);
+                        col = combine(col, i, true, true);
+                        col = slide(col);
+                        for(let j=0; j<4; j++) newBoard[3-j][i] = col[j];
                     }
-                } else if (direction === 'UP') {
-                    newBoard = rotateLeft(newBoard);
-                    for (let i = 0; i < 4; i++) {
-                        let res = operate(newBoard[i], newScore);
-                        newBoard[i] = res.row;
-                        newScore = res.newScore;
-                        if(res.hasMerged) trackMerge(i, res.mergeIndex, 'UP');
-                    }
-                    newBoard = rotateRight(newBoard);
-                } else if (direction === 'DOWN') {
-                    newBoard = rotateRight(newBoard);
-                    for (let i = 0; i < 4; i++) {
-                        let res = operate(newBoard[i], newScore);
-                        newBoard[i] = res.row;
-                        newScore = res.newScore;
-                        if(res.hasMerged) trackMerge(i, res.mergeIndex, 'DOWN');
-                    }
-                    newBoard = rotateLeft(newBoard);
                 }
 
                 if (oldBoardStr !== JSON.stringify(newBoard)) {
-                    const { newBoard: boardWithTile, addedPos } = addRandomTile(newBoard);
-                    setBoard(boardWithTile);
-                    setScore(newScore);
-                    setMergedPos(currentMergedPos); // Устанавливаем позицию для анимации слияния
-                    setNewTilePos(addedPos); // Устанавливаем позицию для анимации появления
-                    checkGameOver(boardWithTile);
+                    // Спавн новой плитки
+                    let emptyCells = [];
+                    for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (newBoard[r][c] === 0) emptyCells.push({ r, c });
+                    if (emptyCells.length > 0) {
+                        const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                        newBoard[r][c] = Math.random() < 0.9 ? 2 : 4;
+                        setNewTilePos({ r, c });
+                    }
 
-                    // Сброс анимационных состояний через короткий промежуток
+                    setBoard(newBoard);
+                    setScore(newScore);
+                    setMergedTiles(currentMerges);
+                    
+                    if (pointsGained > 0) {
+                        setScoreAdds(prev => [...prev, { id: Date.now(), val: pointsGained }]);
+                        playSound('merge', highestMergeLevel);
+                        vibrate(40); // Сильная вибрация при слиянии
+                    } else {
+                        playSound('move');
+                        vibrate(15); // Легкая вибрация при сдвиге
+                    }
+
+                    // Проверка на проигрыш
+                    let isOver = true;
+                    for (let r = 0; r < 4; r++) {
+                        for (let c = 0; c < 4; c++) {
+                            if (newBoard[r][c] === 0) isOver = false;
+                            if (c !== 3 && newBoard[r][c] === newBoard[r][c + 1]) isOver = false;
+                            if (r !== 3 && newBoard[r][c] === newBoard[r + 1][c]) isOver = false;
+                        }
+                    }
+                    if (isOver) setGameOver(true);
+
+                    // Очистка анимаций
                     setTimeout(() => {
-                        setMergedPos(null);
+                        setMergedTiles([]);
                         setNewTilePos(null);
-                    }, 400);
+                    }, 300);
                 }
             }, [board, score, gameOver]);
 
-            const checkGameOver = (currentBoard) => {
-                for (let r = 0; r < 4; r++) {
-                    for (let c = 0; c < 4; c++) {
-                        if (currentBoard[r][c] === 0) return;
-                        if (c !== 3 && currentBoard[r][c] === currentBoard[r][c + 1]) return;
-                        if (r !== 3 && currentBoard[r][c] === currentBoard[r + 1][c]) return;
-                    }
-                }
-                setGameOver(true);
-            };
-
-            // --- Управление ---
             useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
@@ -263,87 +308,92 @@
 
             const handleTouchStart = (e) => {
                 touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                initAudio(); // Инициализация на тач
             };
 
             const handleTouchEnd = (e) => {
                 if (!touchStart.current) return;
                 const deltaX = e.changedTouches[0].clientX - touchStart.current.x;
                 const deltaY = e.changedTouches[0].clientY - touchStart.current.y;
-                const absX = Math.abs(deltaX);
-                const absY = Math.abs(deltaY);
-                if (Math.max(absX, absY) > 40) { // Немного увеличили порог свайпа
-                    if (absX > absY) { deltaX > 0 ? move('RIGHT') : move('LEFT'); } 
+                if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 40) { 
+                    if (Math.abs(deltaX) > Math.abs(deltaY)) { deltaX > 0 ? move('RIGHT') : move('LEFT'); } 
                     else { deltaY > 0 ? move('DOWN') : move('UP'); }
                 }
             };
 
             return (
-                <div 
-                    className="w-full max-w-md flex flex-col items-center relative"
-                    onTouchStart={handleTouchStart}
-                    onTouchEnd={handleTouchEnd}
-                >
-                    {/* Заголовок и Счет */}
-                    <div className="w-full flex justify-between items-end mb-8 px-2">
+                <div className="w-full max-w-md flex flex-col items-center relative" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                    {/* Шапка */}
+                    <div className="w-full flex justify-between items-end mb-6 px-2">
                         <div>
-                            <h1 className="text-4xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 drop-shadow-[0_2px_10px_rgba(168,85,247,0.5)]">EVOLUTION</h1>
-                            <p className="text-sm text-purple-200/70 font-bold uppercase tracking-[0.3em] mt-1 ml-1">Cyberpunk Edition</p>
+                            <h1 className="text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 drop-shadow-[0_2px_10px_rgba(168,85,247,0.5)]">ЭВОЛЮЦИЯ</h1>
+                            <p className="text-xs text-purple-200/70 font-bold uppercase tracking-[0.2em] mt-1 ml-1">Кибер-Эра</p>
                         </div>
-                        <div className="glass-panel px-6 py-3 rounded-2xl text-center">
-                            <p className="text-xs text-purple-200/60 font-bold uppercase tracking-wider mb-1">Score</p>
-                            <p className="text-2xl font-black text-white drop-shadow-lg">{score}</p>
+                        <div className="flex gap-2">
+                            <div className="glass-panel px-4 py-2 rounded-xl text-center relative">
+                                <p className="text-[10px] text-purple-200/60 font-bold uppercase tracking-wider mb-0.5">Счет</p>
+                                <p className="text-lg font-black text-white drop-shadow-lg leading-none">{score}</p>
+                                {/* Всплывающие очки */}
+                                {scoreAdds.map(add => (
+                                    <div key={add.id} className="score-anim right-0 top-0 text-sm">+{add.val}</div>
+                                ))}
+                            </div>
+                            <div className="glass-panel px-4 py-2 rounded-xl text-center hidden sm:block">
+                                <p className="text-[10px] text-purple-200/60 font-bold uppercase tracking-wider mb-0.5">Рекорд</p>
+                                <p className="text-lg font-black text-white/80 drop-shadow-lg leading-none">{highScore}</p>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Игровое поле */}
+                    {/* Поле */}
                     <div className="w-full aspect-square glass-panel p-3 rounded-3xl relative shadow-2xl border-purple-500/20">
-                        {/* Экран Game Over */}
                         {gameOver && (
-                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-3xl backdrop-blur-lg bg-black/60 transition-all duration-500">
-                                <h2 className="text-4xl font-black text-red-500 mb-6 drop-shadow-[0_0_25px_rgba(239,68,68,0.8)] tracking-widest uppercase">System Failure</h2>
-                                <button 
-                                    onClick={handleRestart}
-                                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-full transition-all shadow-[0_0_20px_rgba(168,85,247,0.5)] hover:shadow-[0_0_40px_rgba(168,85,247,0.8)] hover:scale-105 active:scale-95 tracking-wider uppercase text-sm"
-                                >
-                                    Reboot Civilization
+                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center rounded-3xl backdrop-blur-md bg-black/70 transition-all duration-500">
+                                <h2 className="text-3xl font-black text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] tracking-widest uppercase text-center">Крах<br/>Цивилизации</h2>
+                                <button onClick={handleRestart} className="px-8 py-4 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold rounded-full transition-all shadow-[0_0_20px_rgba(168,85,247,0.5)] hover:scale-105 active:scale-95 tracking-wider uppercase text-sm">
+                                    Перезапустить
                                 </button>
                             </div>
                         )}
                         
-                        {/* Сетка плиток */}
-                        <div className="grid grid-cols-4 gap-3 w-full h-full relative z-10">
+                        <div className="grid grid-cols-4 gap-2 md:gap-3 w-full h-full relative z-10">
                             {board.map((row, rIdx) => 
                                 row.map((cell, cIdx) => {
                                     const tileInfo = TILE_DATA[cell];
-                                    // Проверяем, нужно ли применить анимацию слияния или появления
-                                    const isMerged = mergedPos && mergedPos.r === rIdx && mergedPos.c === cIdx;
+                                    const isMerged = mergedTiles.some(t => t.r === rIdx && t.c === cIdx);
                                     const isNew = newTilePos && newTilePos.r === rIdx && newTilePos.c === cIdx;
 
-                                    // Динамические классы для анимации
                                     let animClass = '';
                                     if (isMerged && cell !== 0) animClass = 'tile-merged-pop';
                                     else if (isNew && cell !== 0) animClass = 'tile-new-appear';
 
                                     return (
                                         <div key={`${rIdx}-${cIdx}`} className="relative w-full h-full rounded-xl">
-                                            {/* Фон пустой ячейки */}
-                                            <div className="absolute inset-0 bg-gray-900/30 rounded-xl border border-white/5 shadow-inner backdrop-blur-sm"></div>
+                                            <div className="absolute inset-0 bg-gray-900/40 rounded-xl border border-white/5 shadow-inner"></div>
 
-                                            {/* Активная плитка */}
                                             {cell !== 0 && (
                                                 <div 
-                                                    className={`absolute inset-0 flex flex-col items-center justify-center rounded-xl tile-base transition-all duration-200 ${animClass}`}
+                                                    className={`absolute inset-0 flex flex-col items-center justify-center rounded-xl tile-base transition-all duration-150 ${animClass}`}
                                                     style={{
-                                                        // Применяем сложное неоновое свечение через inline-стили
                                                         boxShadow: tileInfo.glow,
-                                                        background: `linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0) 100%), rgba(30, 41, 59, 0.6)`
+                                                        background: `linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0) 100%), rgba(30, 41, 59, 0.8)`
                                                     }}
                                                 >
-                                                    <span className={`text-[10px] md:text-xs font-black uppercase tracking-widest text-center px-1 leading-tight drop-shadow-lg ${tileInfo.color}`}>
-                                                        {tileInfo.name}
+                                                    <span 
+                                                        key={`icon-${cell}-${isMerged ? 'merge' : 'idle'}`} 
+                                                        className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 ${tileInfo.color} ${isMerged ? 'animate-icon-pulse' : ''}`}
+                                                    >
+                                                        <i data-lucide={tileInfo.icon} className="w-full h-full drop-shadow-md"></i>
                                                     </span>
-                                                    {/* Небольшой индикатор уровня для визуального веса */}
-                                                    <div className={`mt-1 h-1 w-1/3 rounded-full bg-current opacity-50 ${tileInfo.color} drop-shadow-[0_0_5px_currentColor]`}></div>
+
+                                                    {isMerged && (
+                                                        <>
+                                                            <div className="particle" style={{ '--tx': '-35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                            <div className="particle" style={{ '--tx': '35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                            <div className="particle" style={{ '--tx': '-35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                            <div className="particle" style={{ '--tx': '35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -353,12 +403,12 @@
                         </div>
                     </div>
 
-                    <button 
-                        onClick={handleRestart}
-                        className="mt-10 px-8 py-4 w-full glass-panel hover:bg-white/10 rounded-2xl text-sm font-bold uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] text-purple-200/80 hover:text-white shadow-[0_0_15px_rgba(168,85,247,0.15)] hover:shadow-[0_0_25px_rgba(168,85,247,0.4)] border-purple-500/30"
-                    >
-                        Restart Mission
-                    </button>
+                    <div className="w-full flex justify-between gap-4 mt-8">
+                        <button onClick={handleRestart} className="flex-1 py-4 glass-panel hover:bg-white/10 rounded-2xl text-xs font-bold uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] text-purple-200/80 hover:text-white border-purple-500/30">
+                            Начать Заново
+                        </button>
+                    </div>
+                    <p className="mt-6 text-[10px] text-gray-500/60 uppercase tracking-widest">Свайпай или используй стрелки</p>
                 </div>
             );
         };
