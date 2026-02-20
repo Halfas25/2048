@@ -27,26 +27,36 @@
             box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
         }
 
-        /* --- НОВЫЙ ДВИЖОК СЕТКИ --- */
-        .board-container {
-            --grid-gap: 0.5rem; /* 8px отступы */
-            --cell-size: calc((100% - var(--grid-gap) * 3) / 4);
+        /* --- ИСПРАВЛЕННЫЙ ДВИЖОК СЕТКИ --- */
+        .board-inner {
+            /* Жестко фиксируем отступы для идеального выравнивания */
+            --gap: 8px; 
+            --size: calc((100% - 3 * var(--gap)) / 4);
             position: relative;
-            padding: var(--grid-gap);
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Фон ячеек и активные плитки теперь используют одну формулу позиции */
+        .bg-cell {
+            position: absolute;
+            width: var(--size);
+            height: var(--size);
+            left: calc(var(--c) * (var(--size) + var(--gap)));
+            top: calc(var(--r) * (var(--size) + var(--gap)));
         }
 
         .tile-animated {
             position: absolute;
-            width: var(--cell-size);
-            height: var(--cell-size);
-            /* Плавное перемещение на основе CSS-переменных координат */
+            width: var(--size);
+            height: var(--size);
+            top: 0;
+            left: 0;
             transform: translate(
-                calc(var(--c) * (var(--cell-size) + var(--grid-gap))), 
-                calc(var(--r) * (var(--cell-size) + var(--grid-gap)))
+                calc(var(--c) * (var(--size) + var(--gap))), 
+                calc(var(--r) * (var(--size) + var(--gap)))
             );
             transition: transform 0.15s ease-in-out;
-            top: var(--grid-gap);
-            left: var(--grid-gap);
         }
 
         .tile-base {
@@ -117,12 +127,7 @@
             const tileIdCounter = useRef(1);
             const isMoving = useRef(false);
 
-            // Состояние вынесено в один объект для избежания рассинхрона
-            const [gameState, setGameState] = useState({
-                tiles: [],
-                score: 0,
-                gameOver: false
-            });
+            const [gameState, setGameState] = useState({ tiles: [], score: 0, gameOver: false });
             const [highScore, setHighScore] = useState(() => Number(localStorage.getItem('evoHighScore')) || 0);
             const [scoreAdds, setScoreAdds] = useState([]);
             const audioCtx = useRef(null);
@@ -136,7 +141,6 @@
                 }
             }, [gameState.score, highScore]);
 
-            // Очистка уничтоженных плиток ПОСЛЕ завершения CSS транзишена (150ms)
             useEffect(() => {
                 const hasDestroyed = gameState.tiles.some(t => t.isDestroyed);
                 if (hasDestroyed) {
@@ -150,10 +154,7 @@
                 }
             }, [gameState.tiles]);
 
-            const initAudio = () => {
-                if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-            };
-
+            const initAudio = () => { if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)(); };
             const playSound = (type, level = 1) => {
                 if (!audioCtx.current) return;
                 const ctx = audioCtx.current;
@@ -194,7 +195,6 @@
                 setScoreAdds([]);
             }, []);
 
-            // Запускаем игру при первом рендере
             useEffect(() => { handleRestart(); }, [handleRestart]);
 
             const move = useCallback((dir) => {
@@ -203,9 +203,7 @@
 
                 setGameState(prevState => {
                     let newTiles = JSON.parse(JSON.stringify(prevState.tiles));
-                    // Убираем старые флаги анимаций перед новым ходом
                     newTiles.forEach(t => { t.isNew = false; t.isMerged = false; });
-                    // Очищаем «убитые» тайлы, если игрок свайпнул слишком быстро
                     newTiles = newTiles.filter(t => !t.isDestroyed);
 
                     const getTile = (r, c) => newTiles.find(t => t.r === r && t.c === c && !t.isDestroyed);
@@ -214,7 +212,6 @@
                     let addedScore = 0;
                     let maxMergeLevel = 0;
 
-                    // Функция прохода по линии
                     const traverse = (xs, ys, dr, dc) => {
                         xs.forEach(x => {
                             ys.forEach(y => {
@@ -228,7 +225,6 @@
                                 let targetC = c;
                                 let nextTile = null;
 
-                                // Ищем крайнюю доступную позицию или плитку для слияния
                                 while (true) {
                                     let nextR = targetR + dr;
                                     let nextC = targetC + dc;
@@ -244,7 +240,6 @@
                                 }
 
                                 if (nextTile && nextTile.val === tile.val && !nextTile.isMerged) {
-                                    // Слияние: текущая плитка едет к цели и уничтожается
                                     tile.r = nextTile.r;
                                     tile.c = nextTile.c;
                                     tile.isDestroyed = true;
@@ -256,7 +251,6 @@
                                     addedScore += nextTile.val;
                                     maxMergeLevel = Math.max(maxMergeLevel, TILE_DATA[nextTile.val]?.level || 1);
                                 } else if (targetR !== r || targetC !== c) {
-                                    // Просто сдвиг
                                     tile.r = targetR;
                                     tile.c = targetC;
                                     hasMoved = true;
@@ -273,7 +267,6 @@
                     if (dir === 'DOWN') traverse(arr, revArr, 1, 0);
 
                     if (hasMoved) {
-                        // Спавн новой плитки
                         let emptyCells = [];
                         for(let r=0; r<4; r++) {
                             for(let c=0; c<4; c++) {
@@ -285,7 +278,6 @@
                             newTiles.push(createTile(r, c, Math.random() < 0.9 ? 2 : 4));
                         }
 
-                        // Звук и вибрация
                         if (addedScore > 0) {
                             playSound('merge', maxMergeLevel);
                             vibrate(40);
@@ -295,16 +287,13 @@
                             vibrate(15);
                         }
 
-                        // Блокировка хода до завершения анимации (предотвращает спам кнопками)
                         isMoving.current = true;
                         setTimeout(() => { isMoving.current = false; }, 150);
 
-                        // Проверка Game Over
                         let isOver = true;
                         if (emptyCells.length > 1) {
-                            isOver = false; // Точно есть куда ходить
+                            isOver = false;
                         } else {
-                            // Проверяем возможность слияния
                             for (let r = 0; r < 4; r++) {
                                 for (let c = 0; c < 4; c++) {
                                     let val = getTile(r,c)?.val;
@@ -346,12 +335,11 @@
                 }
             };
 
-            // Отрисовка пустой сетки на фоне
             const renderGrid = () => {
                 let grid = [];
                 for(let r=0; r<4; r++) {
                     for(let c=0; c<4; c++) {
-                        grid.push(<div key={`bg-${r}-${c}`} className="w-full h-full bg-gray-900/40 rounded-xl border border-white/5 shadow-inner backdrop-blur-sm"></div>);
+                        grid.push(<div key={`bg-${r}-${c}`} style={{ '--c': c, '--r': r }} className="bg-cell bg-gray-900/40 rounded-xl border border-white/5 shadow-inner backdrop-blur-sm"></div>);
                     }
                 }
                 return grid;
@@ -377,7 +365,7 @@
                         </div>
                     </div>
 
-                    <div className="board-container glass-panel w-full aspect-square rounded-3xl shadow-2xl border-purple-500/20">
+                    <div className="w-full aspect-square glass-panel p-3 rounded-3xl relative shadow-2xl border-purple-500/20">
                         {gameState.gameOver && (
                             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center rounded-3xl backdrop-blur-md bg-black/70 transition-all duration-500">
                                 <h2 className="text-3xl font-black text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] tracking-widest uppercase text-center">Крах<br/>Цивилизации</h2>
@@ -387,53 +375,53 @@
                             </div>
                         )}
                         
-                        {/* Фоновая сетка */}
-                        <div className="grid grid-cols-4 gap-2 w-full h-full relative z-0">
+                        {/* Контейнер сетки */}
+                        <div className="board-inner">
+                            {/* Фоновая сетка */}
                             {renderGrid()}
-                        </div>
 
-                        {/* Слой с активными плитками */}
-                        {gameState.tiles.map(tile => {
-                            const tileInfo = TILE_DATA[tile.val];
-                            if (!tileInfo) return null;
-                            
-                            // Вычисляем Z-index: анимация слияния поверх всего, уничтожаемые плитки уходят под низ
-                            let zIndex = 20;
-                            if (tile.isDestroyed) zIndex = 10;
-                            if (tile.isMerged) zIndex = 30;
+                            {/* Слой с активными плитками */}
+                            {gameState.tiles.map(tile => {
+                                const tileInfo = TILE_DATA[tile.val];
+                                if (!tileInfo) return null;
+                                
+                                let zIndex = 20;
+                                if (tile.isDestroyed) zIndex = 10;
+                                if (tile.isMerged) zIndex = 30;
 
-                            return (
-                                <div 
-                                    key={tile.id}
-                                    className={`tile-animated z-[${zIndex}]`}
-                                    style={{ '--c': tile.c, '--r': tile.r, zIndex: zIndex }}
-                                >
+                                return (
                                     <div 
-                                        className={`tile-base flex flex-col items-center justify-center rounded-xl transition-all
-                                            ${tile.isNew ? 'tile-new-appear' : ''} 
-                                            ${tile.isMerged ? 'tile-merged-pop' : ''}
-                                        `}
-                                        style={{
-                                            boxShadow: tileInfo.glow,
-                                            background: `linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0) 100%), rgba(30, 41, 59, 0.8)`
-                                        }}
+                                        key={tile.id}
+                                        className={`tile-animated z-[${zIndex}]`}
+                                        style={{ '--c': tile.c, '--r': tile.r, zIndex: zIndex }}
                                     >
-                                        <span className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 ${tileInfo.color}`}>
-                                            <i data-lucide={tileInfo.icon} className="w-full h-full drop-shadow-md"></i>
-                                        </span>
+                                        <div 
+                                            className={`tile-base flex flex-col items-center justify-center rounded-xl transition-all
+                                                ${tile.isNew ? 'tile-new-appear' : ''} 
+                                                ${tile.isMerged ? 'tile-merged-pop' : ''}
+                                            `}
+                                            style={{
+                                                boxShadow: tileInfo.glow,
+                                                background: `linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0) 100%), rgba(30, 41, 59, 0.8)`
+                                            }}
+                                        >
+                                            <span className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 ${tileInfo.color}`}>
+                                                <i data-lucide={tileInfo.icon} className="w-full h-full drop-shadow-md"></i>
+                                            </span>
 
-                                        {tile.isMerged && (
-                                            <>
-                                                <div className="particle" style={{ '--tx': '-35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
-                                                <div className="particle" style={{ '--tx': '35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
-                                                <div className="particle" style={{ '--tx': '-35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
-                                                <div className="particle" style={{ '--tx': '35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
-                                            </>
-                                        )}
+                                            {tile.isMerged && (
+                                                <>
+                                                    <div className="particle" style={{ '--tx': '-35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                    <div className="particle" style={{ '--tx': '35px', '--ty': '-35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                    <div className="particle" style={{ '--tx': '-35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                    <div className="particle" style={{ '--tx': '35px', '--ty': '35px', backgroundColor: tileInfo.color.replace('text-', '') }}></div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
 
                     <div className="w-full flex justify-between gap-4 mt-8">
